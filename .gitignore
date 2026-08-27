@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+
+build/
+dist/
+*.spec.bak
+
+# 运行时配置（含本机路径）
+phone_bridge_config.json

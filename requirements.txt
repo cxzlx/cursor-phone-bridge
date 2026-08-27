@@ -1,0 +1,4 @@
+customtkinter>=5.2.2
+pyinstaller>=6.3.0
+Pillow>=10.0.0
+pystray>=0.19.5
