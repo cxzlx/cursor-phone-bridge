@@ -1,5 +1,7 @@
 # Phone to Cursor
 
+**English** | [中文](README_zh.md)
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows-blue.svg)]()
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-yellow.svg)]()

@@ -1,4 +1,4 @@
-"""手机语音 → 内网 → 粘贴进目标应用输入框（Cursor / Codex 等可配置）。"""
+"""Phone voice/text over LAN → paste into Cursor / Codex / ChatGPT."""
 
 from __future__ import annotations
 
@@ -21,9 +21,9 @@ from urllib.parse import parse_qs
 PORT = 8765
 MUTEX_NAME = "Local\\CursorPhoneBridge_SingleInstance"
 ERROR_ALREADY_EXISTS = 183
-APP_TITLE = "手机传Cursor"
+APP_TITLE = "Phone to Cursor"
 
-SELF_TITLES = (APP_TITLE, "PhoneToCursor", "手机传 Cursor")
+SELF_TITLES = (APP_TITLE, "PhoneToCursor", "Phone to Cursor", "手机传 Cursor")
 
 PRESETS: dict[str, dict] = {
     "Cursor": {
@@ -55,25 +55,25 @@ PRESETS: dict[str, dict] = {
         "app_name_hints": ["ChatGPT", "Codex"],
         "lnk_names": ["ChatGPT.lnk", "Codex.lnk"],
     },
-    "custom": {"label": "自定义", "keywords": [], "send_key": "enter", "focus_hotkey": "none"},
+    "custom": {"label": "Custom", "keywords": [], "send_key": "enter", "focus_hotkey": "none"},
 }
 
 SEND_KEY_OPTIONS = {
-    "enter": "回车 Enter",
+    "enter": "Enter",
     "ctrl_enter": "Ctrl+Enter",
-    "none": "不自动发送",
+    "none": "Do not auto-send",
 }
 
 FOCUS_HOTKEY_OPTIONS = {
-    "ctrl_l": "Ctrl+L（Cursor 聊天）",
-    "ctrl_i": "Ctrl+I（Cursor Composer）",
-    "none": "不按聚焦快捷键",
+    "ctrl_l": "Ctrl+L (Cursor chat)",
+    "ctrl_i": "Ctrl+I (Cursor Composer)",
+    "none": "No focus hotkey",
 }
 
 _mutex = None
 _ui_root = None
 paste_queue: queue.Queue = queue.Queue()
-last_status = "等待手机发送…"
+last_status = "Waiting for phone…"
 _start_apps_cache: dict[str, str] | None = None
 
 # 运行时目标配置（GUI / 配置文件可改）
@@ -203,7 +203,7 @@ def apply_config(cfg: dict) -> None:
 def target_label() -> str:
     tid = runtime_cfg.get("target", "Cursor")
     if tid == "custom":
-        kw = (runtime_cfg.get("custom_keyword") or "").strip() or "自定义"
+        kw = (runtime_cfg.get("custom_keyword") or "").strip() or "Custom"
         return kw
     return PRESETS.get(tid, PRESETS["Cursor"])["label"]
 
@@ -304,7 +304,7 @@ class POINT(ctypes.Structure):
 def set_clipboard_ui(text: str) -> None:
     """界面「复制地址」用；发送到目标应用请用 set_clipboard_text。"""
     if _ui_root is None:
-        raise RuntimeError("界面未就绪")
+        raise RuntimeError("UI not ready")
     _ui_root.clipboard_clear()
     _ui_root.clipboard_append(text)
     _ui_root.update_idletasks()
@@ -331,21 +331,21 @@ def set_clipboard_text(text: str) -> None:
             break
         time.sleep(0.05)
     else:
-        raise RuntimeError("无法打开剪贴板")
+        raise RuntimeError("Cannot open clipboard")
     try:
         user32.EmptyClipboard()
         handle = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(data))
         if not handle:
-            raise RuntimeError("GlobalAlloc 失败")
+            raise RuntimeError("GlobalAlloc failed")
         locked = kernel32.GlobalLock(handle)
         if not locked:
             kernel32.GlobalFree(handle)
-            raise RuntimeError("GlobalLock 失败")
+            raise RuntimeError("GlobalLock failed")
         ctypes.memmove(locked, data, len(data))
         kernel32.GlobalUnlock(handle)
         if not user32.SetClipboardData(CF_UNICODETEXT, handle):
             kernel32.GlobalFree(handle)
-            raise RuntimeError("SetClipboardData 失败")
+            raise RuntimeError("SetClipboardData failed")
     finally:
         user32.CloseClipboard()
 
@@ -528,17 +528,17 @@ def paste_into_target(text: str, do_send: bool) -> str:
     """简单流程：写剪贴板 → 聚焦窗口 →（可选快捷键）→ 粘贴一次 → 发送。"""
     text = (text or "").strip()
     if not text:
-        return "内容为空"
+        return "Empty content"
     keywords = match_keywords()
     label = target_label()
     if not keywords:
-        return "请先填写自定义窗口标题关键词"
+        return "Set a custom window title keyword first"
     try:
         set_clipboard_text(text)
     except Exception as exc:  # noqa: BLE001
-        return f"写入剪贴板失败：{exc}"
+        return f"Clipboard write failed: {exc}"
     if not focus_target(keywords):
-        return f"没找到「{label}」窗口，请先打开并点一下输入框"
+        return f"Window not found for {label}. Open the app and focus the input."
     time.sleep(0.08)
     hotkey = runtime_cfg.get("focus_hotkey") or "none"
     if hotkey and hotkey != "none":
@@ -549,8 +549,8 @@ def paste_into_target(text: str, do_send: bool) -> str:
     if do_send and send_key != "none":
         time.sleep(0.12)
         send_submit(send_key)
-        return f"已粘贴并发送到 {label}"
-    return f"已粘贴到 {label}"
+        return f"Pasted and sent to {label}"
+    return f"Pasted to {label}"
 
 
 def _iter_start_menu_roots() -> list[Path]:
@@ -685,7 +685,7 @@ def launch_target_app() -> tuple[bool, str]:
     resolved = resolve_launch_target()
     label = target_label()
     if not resolved:
-        return False, f"无法定位「{label}」启动路径，请在电脑端为该目标配置 .exe"
+        return False, f"Cannot find launch path for {label}. Configure .exe on desktop."
     kind, value = resolved
     try:
         if kind == "path":
@@ -697,9 +697,9 @@ def launch_target_app() -> tuple[bool, str]:
                 ["explorer.exe", f"shell:AppsFolder\\{value}"],
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
-        return True, f"正在启动「{label}」…"
+        return True, f"Launching {label}…"
     except Exception as exc:  # noqa: BLE001
-        return False, f"启动「{label}」失败：{exc}"
+        return False, f"Failed to launch {label}: {exc}"
 
 
 def update_target_from_form(qs: dict) -> None:
@@ -746,11 +746,11 @@ def page_html() -> str:
     send_opts_html = "\n".join(send_opts)
     custom_display = "block" if cur == "custom" else "none"
     return f"""<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
-<title>手机传到电脑</title>
+<title>Phone to PC</title>
 <style>
   :root {{ color-scheme: dark; }}
   body {{ margin:0; font-family:system-ui,sans-serif; background:#0f1419; color:#e8eef5;
@@ -781,32 +781,32 @@ def page_html() -> str:
 </head>
 <body>
 <header>
-  <h1 id="title">传到电脑</h1>
-  <p>选好目标应用，语音输入后点发送</p>
+  <h1 id="title">Send to PC</h1>
+  <p>Pick target app, then type or dictate and send</p>
 </header>
 <main>
   <div class="field">
-    <span>目标应用</span>
+    <span>Target app</span>
     <select id="target" onchange="onTargetChange()">{options_html}</select>
   </div>
   <div class="field" id="kwWrap">
-    <span>窗口标题关键词</span>
-    <input id="keyword" value="{keyword}" placeholder="例如 Codex / 微信" onchange="saveCfg()"/>
+    <span>Window title keyword</span>
+    <input id="keyword" value="{keyword}" placeholder="e.g. Codex / WeChat" onchange="saveCfg()"/>
   </div>
   <div class="field">
-    <span>粘贴后发送键</span>
+    <span>Send key after paste</span>
     <select id="sendKey" onchange="saveCfg()">{send_opts_html}</select>
   </div>
-  <textarea id="t" placeholder="点这里，用手机语音输入…" autofocus></textarea>
+  <textarea id="t" placeholder="Tap here, use voice input…" autofocus></textarea>
   <div class="opts">
-    <label><input id="autoEnter" type="checkbox" {auto_checked} onchange="saveCfg()"/> 发送后自动按发送键</label>
+    <label><input id="autoEnter" type="checkbox" {auto_checked} onchange="saveCfg()"/> Auto send key after paste</label>
   </div>
   <div class="row">
-    <button class="clear" type="button" onclick="clearT()">清空</button>
-    <button class="send" type="button" id="sendBtn" onclick="sendT()">发送</button>
+    <button class="clear" type="button" onclick="clearT()">Clear</button>
+    <button class="send" type="button" id="sendBtn" onclick="sendT()">Send</button>
   </div>
   <div id="status"></div>
-  <div class="hint">提示：请先打开目标应用并点一下输入框，再发送更稳。</div>
+  <div class="hint">提示：Open the target app and focus the input first for best results.</div>
 </main>
 <script>
 function labelOf(){{
@@ -814,14 +814,14 @@ function labelOf(){{
   const opt=t.options[t.selectedIndex];
   if(t.value==='custom'){{
     const kw=(document.getElementById('keyword').value||'').trim();
-    return kw||'自定义';
+    return kw||'Custom';
   }}
-  return opt?opt.text:'目标';
+  return opt?opt.text:'Target';
 }}
 function refreshUI(){{
   const lab=labelOf();
-  document.getElementById('title').textContent='传到 '+lab;
-  document.getElementById('sendBtn').textContent='发送到 '+lab;
+  document.getElementById('title').textContent='To '+lab;
+  document.getElementById('sendBtn').textContent='Send to '+lab;
   document.getElementById('kwWrap').style.display=
     document.getElementById('target').value==='custom'?'block':'none';
 }}
@@ -847,21 +847,21 @@ async function sendT(){{
   const el=document.getElementById('t');
   const st=document.getElementById('status');
   const text=el.value.trim();
-  if(!text){{ st.className='err'; st.textContent='请先输入内容'; return; }}
+  if(!text){{ st.className='err'; st.textContent='Enter some text first'; return; }}
   if(document.getElementById('target').value==='custom' && !(document.getElementById('keyword').value||'').trim()){{
-    st.className='err'; st.textContent='自定义目标请填写窗口标题关键词'; return;
+    st.className='err'; st.textContent='Custom target needs a window title keyword'; return;
   }}
   const autoEnter=document.getElementById('autoEnter').checked ? '1':'0';
-  st.className=''; st.textContent='发送中…';
+  st.className=''; st.textContent='Sending…';
   try{{
     const r=await fetch('/send',{{method:'POST',
       headers:{{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'}},
       body:formBody({{text:text, enter:autoEnter}})}});
     const j=await r.json();
     st.className=j.ok?'':'err';
-    st.textContent=j.message||(j.ok?'成功':'失败');
+    st.textContent=j.message||(j.ok?'OK':'Failed');
     if(j.ok) el.value='';
-  }}catch(e){{ st.className='err'; st.textContent='发送失败：'+e; }}
+  }}catch(e){{ st.className='err'; st.textContent='Send failed: '+e; }}
 }}
 function clearT(){{ document.getElementById('t').value=''; document.getElementById('status').textContent=''; }}
 refreshUI();
@@ -921,7 +921,7 @@ class Handler(BaseHTTPRequestHandler):
         text = (qs.get("text") or [""])[0].strip()
         do_send = (qs.get("enter") or ["1"])[0] != "0"
         if not text:
-            self._json(400, {"ok": False, "message": "内容为空"})
+            self._json(400, {"ok": False, "message": "Empty content"})
             return
 
         done = threading.Event()
@@ -931,19 +931,19 @@ class Handler(BaseHTTPRequestHandler):
             global last_status
             try:
                 msg = paste_into_target(text, do_send)
-                result["ok"] = msg.startswith("已粘贴")
+                result["ok"] = msg.startswith("Pasted")
                 result["message"] = msg
                 last_status = msg
             except Exception as exc:  # noqa: BLE001
                 result["ok"] = False
-                result["message"] = f"失败：{exc}"
+                result["message"] = f"Failed: {exc}"
                 last_status = result["message"]
             finally:
                 done.set()
 
         paste_queue.put(job)
         if not done.wait(timeout=8):
-            last_status = "处理超时，请重试"
+            last_status = "Timed out, try again"
             self._json(504, {"ok": False, "message": last_status})
             return
         self._json(200, result)
@@ -984,13 +984,13 @@ def run_gui(start_in_tray: bool = False) -> None:
 
     url = phone_url()
     state["httpd"] = start_server()
-    last_status = f"服务已启动：{url}"
+    last_status = f"Server running: {url}"
 
-    ctk.CTkLabel(app, text="手机传到电脑", font=ctk.CTkFont(size=22, weight="bold")).pack(
+    ctk.CTkLabel(app, text="Phone to PC", font=ctk.CTkFont(size=22, weight="bold")).pack(
         anchor="w", padx=20, pady=(18, 4)
     )
     ctk.CTkLabel(
-        app, text="手机浏览器打开下面地址，用语音输入后点发送", text_color="#8b9bb0"
+        app, text="Open this URL on your phone (same Wi‑Fi), then send", text_color="#8b9bb0"
     ).pack(anchor="w", padx=20)
 
     url_box = ctk.CTkEntry(app, height=40)
@@ -1004,22 +1004,22 @@ def run_gui(start_in_tray: bool = False) -> None:
     def copy_url() -> None:
         try:
             set_clipboard_ui(url)
-            status_var.set("已复制地址到剪贴板")
+            status_var.set("URL copied to clipboard")
         except Exception as exc:  # noqa: BLE001
-            status_var.set(f"复制失败：{exc}")
+            status_var.set(f"Copy failed: {exc}")
 
-    ctk.CTkButton(row, text="复制地址", width=110, command=copy_url).pack(side="left")
+    ctk.CTkButton(row, text="Copy URL", width=110, command=copy_url).pack(side="left")
     ctk.CTkButton(
-        row, text="本机预览", width=110, command=lambda: webbrowser.open(f"http://127.0.0.1:{PORT}/")
+        row, text="Preview locally", width=110, command=lambda: webbrowser.open(f"http://127.0.0.1:{PORT}/")
     ).pack(side="left", padx=8)
     ctk.CTkButton(
-        row, text="隐藏到托盘", width=110, fg_color="#2a3646", command=lambda: hide_to_tray()
+        row, text="Hide to tray", width=110, fg_color="#2a3646", command=lambda: hide_to_tray()
     ).pack(side="left", padx=8)
 
     target_frame = ctk.CTkFrame(app, fg_color="#1a222c", corner_radius=12)
     target_frame.pack(fill="x", padx=20, pady=(16, 0))
 
-    ctk.CTkLabel(target_frame, text="目标应用", font=ctk.CTkFont(size=14, weight="bold")).pack(
+    ctk.CTkLabel(target_frame, text="Target app", font=ctk.CTkFont(size=14, weight="bold")).pack(
         anchor="w", padx=14, pady=(12, 4)
     )
 
@@ -1030,7 +1030,7 @@ def run_gui(start_in_tray: bool = False) -> None:
     send_label_by_key = SEND_KEY_OPTIONS
     key_by_label = {v: k for k, v in SEND_KEY_OPTIONS.items()}
     send_var = ctk.StringVar(
-        value=send_label_by_key.get(runtime_cfg.get("send_key", "enter"), "回车 Enter")
+        value=send_label_by_key.get(runtime_cfg.get("send_key", "enter"), "Enter")
     )
     focus_by_label = {v: k for k, v in FOCUS_HOTKEY_OPTIONS.items()}
     focus_var = ctk.StringVar(
@@ -1053,9 +1053,9 @@ def run_gui(start_in_tray: bool = False) -> None:
         runtime_cfg["auto_launch"] = bool(auto_launch_var.get())
         set_current_launch_path(launch_var.get())
         save_config()
-        path_hint = current_launch_path() or "未配置exe（将尝试自动查找）"
+        path_hint = current_launch_path() or "No exe configured (auto-detect)"
         status_var.set(
-            f"目标「{target_label()}」· {SEND_KEY_OPTIONS[runtime_cfg['send_key']]} · {path_hint}"
+            f"Target {target_label()} · {SEND_KEY_OPTIONS[runtime_cfg['send_key']]} · {path_hint}"
         )
 
     def on_target_change(_choice: str | None = None) -> None:
@@ -1083,11 +1083,11 @@ def run_gui(start_in_tray: bool = False) -> None:
         width=200,
     ).pack(anchor="w", padx=14, pady=4)
 
-    ctk.CTkLabel(target_frame, text="窗口标题关键词（自定义时填写）", text_color="#8b9bb0").pack(
+    ctk.CTkLabel(target_frame, text="Window title keyword (custom target)", text_color="#8b9bb0").pack(
         anchor="w", padx=14, pady=(8, 2)
     )
     keyword_entry = ctk.CTkEntry(
-        target_frame, textvariable=keyword_var, height=34, placeholder_text="例如 Codex / ChatGPT"
+        target_frame, textvariable=keyword_var, height=34, placeholder_text="e.g. Codex / ChatGPT"
     )
     keyword_entry.pack(fill="x", padx=14, pady=4)
     if current_id != "custom":
@@ -1102,7 +1102,7 @@ def run_gui(start_in_tray: bool = False) -> None:
 
     ctk.CTkLabel(
         target_frame,
-        text="该应用的 .exe 路径（可选，一般不用）",
+        text="Target .exe path (optional)",
         text_color="#8b9bb0",
     ).pack(anchor="w", padx=14, pady=(8, 2))
     path_row = ctk.CTkFrame(target_frame, fg_color="transparent")
@@ -1111,24 +1111,24 @@ def run_gui(start_in_tray: bool = False) -> None:
         path_row,
         textvariable=launch_var,
         height=34,
-        placeholder_text=r"例如 D:\cursor\Cursor.exe",
+        placeholder_text=r"e.g. D:\cursor\Cursor.exe",
     )
     launch_entry.pack(side="left", fill="x", expand=True)
 
     def browse_exe() -> None:
         picked = filedialog.askopenfilename(
-            title="选择目标应用 exe",
-            filetypes=[("可执行文件", "*.exe"), ("所有文件", "*.*")],
+            title="Select target .exe",
+            filetypes=[("Executables", "*.exe"), ("All files", "*.*")],
         )
         if picked:
             launch_var.set(picked)
             persist()
 
-    ctk.CTkButton(path_row, text="浏览", width=72, command=browse_exe).pack(side="left", padx=(8, 0))
+    ctk.CTkButton(path_row, text="Browse", width=72, command=browse_exe).pack(side="left", padx=(8, 0))
     launch_entry.bind("<FocusOut>", lambda _e: persist())
     launch_entry.bind("<Return>", lambda _e: persist())
 
-    ctk.CTkLabel(target_frame, text="粘贴后发送键", text_color="#8b9bb0").pack(
+    ctk.CTkLabel(target_frame, text="Send key after paste", text_color="#8b9bb0").pack(
         anchor="w", padx=14, pady=(8, 2)
     )
     ctk.CTkOptionMenu(
@@ -1139,7 +1139,7 @@ def run_gui(start_in_tray: bool = False) -> None:
         width=220,
     ).pack(anchor="w", padx=14, pady=4)
 
-    ctk.CTkLabel(target_frame, text="粘贴前聚焦输入框", text_color="#8b9bb0").pack(
+    ctk.CTkLabel(target_frame, text="Focus input before paste", text_color="#8b9bb0").pack(
         anchor="w", padx=14, pady=(8, 2)
     )
     ctk.CTkOptionMenu(
@@ -1152,13 +1152,13 @@ def run_gui(start_in_tray: bool = False) -> None:
 
     ctk.CTkCheckBox(
         target_frame,
-        text="手机页默认勾选「自动按发送键」",
+        text="Phone page: auto-send checked by default",
         variable=auto_var,
         command=persist,
     ).pack(anchor="w", padx=14, pady=(8, 4))
     ctk.CTkCheckBox(
         target_frame,
-        text="目标未打开时自动启动（不推荐，默认关）",
+        text="Auto-launch target if closed (off by default)",
         variable=auto_launch_var,
         command=persist,
     ).pack(anchor="w", padx=14, pady=4)
@@ -1166,14 +1166,14 @@ def run_gui(start_in_tray: bool = False) -> None:
     def on_autostart() -> None:
         try:
             startup.set_autostart(bool(autostart_var.get()))
-            status_var.set("已开启开机自启" if autostart_var.get() else "已关闭开机自启")
+            status_var.set("Autostart enabled" if autostart_var.get() else "Autostart disabled")
         except Exception as exc:  # noqa: BLE001
             autostart_var.set(startup.is_autostart_enabled())
-            status_var.set(f"自启设置失败：{exc}")
+            status_var.set(f"Autostart failed: {exc}")
 
     ctk.CTkCheckBox(
         target_frame,
-        text="开机自启（启动后进托盘）",
+        text="Autostart (minimize to tray)",
         variable=autostart_var,
         command=on_autostart,
     ).pack(anchor="w", padx=14, pady=(4, 14))
@@ -1185,11 +1185,11 @@ def run_gui(start_in_tray: bool = False) -> None:
     ctk.CTkLabel(
         app,
         text=(
-            "使用步骤：\n"
-            "1. 选择目标应用（Cursor / Codex 等）\n"
-            "2. 电脑和手机连同一 WiFi，手机打开上面地址\n"
-            "3. 先自己打开目标应用，并点一下输入框\n"
-            "4. 手机发送；点叉进托盘，右键托盘可退出"
+            "Steps:\n"
+            "1. Pick target (Cursor / Codex / …)\n"
+            "2. Same Wi‑Fi, open URL on phone\n"
+            "3. Open target app and focus input\n"
+            "4. Send from phone; close hides to tray"
         ),
         justify="left",
         text_color="#8b9bb0",
@@ -1251,12 +1251,12 @@ def run_gui(start_in_tray: bool = False) -> None:
             import pystray
             from pystray import MenuItem as Item
         except ImportError:
-            status_var.set("未安装托盘组件，点叉将直接退出")
+            status_var.set("Tray unavailable; close will exit")
             return
 
         menu = pystray.Menu(
-            Item("打开主界面", lambda *_: app.after(0, show_from_tray), default=True),
-            Item("退出", lambda *_: app.after(0, quit_app)),
+            Item("Open window", lambda *_: app.after(0, show_from_tray), default=True),
+            Item("Quit", lambda *_: app.after(0, quit_app)),
         )
         icon = pystray.Icon("phone_to_cursor", make_tray_image(), APP_TITLE, menu)
         state["tray"] = icon
@@ -1299,7 +1299,7 @@ def run_gui(start_in_tray: bool = False) -> None:
 
 def main() -> None:
     if not acquire_single_instance():
-        ctypes.windll.user32.MessageBoxW(0, f"「{APP_TITLE}」已在运行", "提示", 0x40)
+        ctypes.windll.user32.MessageBoxW(0, f"{APP_TITLE} is already running", "Notice", 0x40)
         sys.exit(0)
     run_gui(start_in_tray="--tray" in sys.argv)
 

@@ -7,7 +7,7 @@ import winreg
 from pathlib import Path
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
-APP_NAME = "手机传Cursor"
+APP_NAME = "PhoneToCursor"
 
 
 def launch_command(minimized: bool = True) -> str:
